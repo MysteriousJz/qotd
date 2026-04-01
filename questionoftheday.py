@@ -122,7 +122,8 @@ label { display: block; margin-top: 8px; }
 
 
 def _page(title: str, body: str, display_name: str = "") -> str:
-    name_line = f"<p>You are: <strong>{_esc(display_name)}</strong></p>" if display_name else ""
+    safe_name = html.escape(display_name, quote=True)
+    name_line = f"<p>You are: <strong>{safe_name}</strong></p>" if display_name else ""
     return f"""<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -173,7 +174,7 @@ def _esc(text: str) -> str:
 
 def _linkify_replies(content: str) -> str:
     """Turn >>123 into a clickable anchor."""
-    escaped = _esc(content)
+    escaped = html.escape(content, quote=True)
     return re.sub(
         r"&gt;&gt;(\d+)",
         r'<a href="#post-\1">&gt;&gt;\1</a>',
@@ -182,10 +183,10 @@ def _linkify_replies(content: str) -> str:
 
 
 def _format_posts(posts) -> str:
-    html = []
+    parts = []
     for post in posts:
         pid = post["id"]
-        name = _esc(post["display_name"])
+        name = html.escape(post["display_name"], quote=True)
         ts = post["created_at"]
         # Show only HH:MM
         try:
@@ -198,7 +199,7 @@ def _format_posts(posts) -> str:
         reply_line = ""
         if reply_to:
             reply_line = f'<span class="post-meta">Replying to <a href="#post-{reply_to}">&gt;&gt;{reply_to}</a></span><br>'
-        html.append(
+        parts.append(
             f'<div class="post" id="post-{pid}">'
             f'<span class="post-number">#{pid}</span> '
             f'<span class="post-meta">{name} — {time_str}</span><br>'
@@ -207,7 +208,7 @@ def _format_posts(posts) -> str:
             f'<a href="/submit?reply_to={pid}">&gt;&gt;{pid}</a>'
             f"</div>"
         )
-    return "\n".join(html)
+    return "\n".join(parts)
 
 
 def _pagination(page: int, total_pages: int, base_url: str) -> str:
