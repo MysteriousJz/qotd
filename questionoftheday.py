@@ -122,8 +122,8 @@ label { display: block; margin-top: 8px; }
 
 
 def _page(title: str, body: str, display_name: str = "") -> str:
-    safe_name = html.escape(display_name, quote=True)
-    name_line = f"<p>You are: <strong>{safe_name}</strong></p>" if display_name else ""
+    # display_name is already HTML-escaped by get_identity()
+    name_line = f"<p>You are: <strong>{display_name}</strong></p>" if display_name else ""
     return f"""<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -308,7 +308,8 @@ def get_identity():
 
     The display name is stored in the Flask session (a signed, tamper-proof
     cookie) so that the value is server-authoritative and cannot be injected
-    or spoofed by the client.
+    or spoofed by the client.  The returned display_name is HTML-escaped for
+    safe embedding in page output.
     """
     ip = request.remote_addr or "unknown"
     user_hash = _user_hash(ip)
@@ -317,7 +318,8 @@ def get_identity():
     if not display_name:
         display_name = _generate_display_name()
         session["display_name"] = display_name
-    return display_name, user_hash
+    # HTML-escape at the source so every downstream use is safe
+    return html.escape(display_name, quote=True), user_hash
 
 
 # ---------------------------------------------------------------------------
