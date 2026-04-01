@@ -1,6 +1,7 @@
 import os
 import re
 import hashlib
+import html
 import random
 import secrets
 import sqlite3
@@ -15,7 +16,6 @@ from flask import (
     session,
     redirect,
     url_for,
-    make_response,
     abort,
 )
 
@@ -167,14 +167,8 @@ def _admin_page(title: str, body: str) -> str:
 
 
 def _esc(text: str) -> str:
-    """HTML-escape a string."""
-    return (
-        text.replace("&", "&amp;")
-        .replace("<", "&lt;")
-        .replace(">", "&gt;")
-        .replace('"', "&quot;")
-        .replace("'", "&#39;")
-    )
+    """HTML-escape a string using the standard library."""
+    return html.escape(text, quote=True)
 
 
 def _linkify_replies(content: str) -> str:
@@ -308,17 +302,20 @@ def _user_hash(ip: str) -> str:
     return hashlib.sha256(data).hexdigest()[:16]
 
 
-_DISPLAY_NAME_RE = re.compile(r"^[a-z]+_[a-z]+_\d{2,3}$")
-
-
 def get_identity():
-    """Return (display_name, user_hash) for the current visitor."""
+    """Return (display_name, user_hash) for the current visitor.
+
+    The display name is stored in the Flask session (a signed, tamper-proof
+    cookie) so that the value is server-authoritative and cannot be injected
+    or spoofed by the client.
+    """
     ip = request.remote_addr or "unknown"
     user_hash = _user_hash(ip)
-    # Check cookie — validate against expected pattern to prevent injection
-    display_name = request.cookies.get("display_name", "")
-    if not display_name or not _DISPLAY_NAME_RE.match(display_name):
+    # Use Flask session (signed cookie) as the source of truth
+    display_name = session.get("display_name")
+    if not display_name:
         display_name = _generate_display_name()
+        session["display_name"] = display_name
     return display_name, user_hash
 
 
@@ -354,9 +351,7 @@ def index():
 
     if question is None:
         body = "<p>No question today. Check back tomorrow.</p>"
-        resp = make_response(_page("Question of the Day", body, display_name))
-        resp.set_cookie("display_name", display_name, max_age=60 * 60 * 24 * 365)
-        return resp
+        return _page("Question of the Day", body, display_name)
 
     page = request.args.get("page", 1, type=int)
     if page < 1:
@@ -388,9 +383,7 @@ def index():
         f"{pagination}"
     )
 
-    resp = make_response(_page("Question of the Day", body, display_name))
-    resp.set_cookie("display_name", display_name, max_age=60 * 60 * 24 * 365)
-    return resp
+    return _page("Question of the Day", body, display_name)
 
 
 @app.route("/archive")
@@ -409,9 +402,7 @@ def archive():
         rows.append(f'<p><a href="/archive/{d}">{d}</a> — {qt}</p>')
 
     body = "\n".join(rows) if rows else "<p>No questions yet.</p>"
-    resp = make_response(_page("Archive", body, display_name))
-    resp.set_cookie("display_name", display_name, max_age=60 * 60 * 24 * 365)
-    return resp
+    return _page("Archive", body, display_name)
 
 
 @app.route("/archive/<date>")
@@ -460,9 +451,7 @@ def archive_date(date):
         f"{pagination}"
     )
 
-    resp = make_response(_page(f"Archive — {date}", body, display_name))
-    resp.set_cookie("display_name", display_name, max_age=60 * 60 * 24 * 365)
-    return resp
+    return _page(f"Archive — {_esc(date)}", body, display_name)
 
 
 @app.route("/submit", methods=["GET", "POST"])
@@ -499,9 +488,7 @@ def submit():
         if errors:
             error_html = "".join(f'<p class="error">{_esc(e)}</p>' for e in errors)
             body = _submit_form(question, reply_to_param or reply_to, error=error_html)
-            resp = make_response(_page("Submit Post", body, display_name))
-            resp.set_cookie("display_name", display_name, max_age=60 * 60 * 24 * 365)
-            return resp
+            return _page("Submit Post", body, display_name)
 
         db.execute(
             "INSERT INTO queue (question_id, user_hash, display_name, content, reply_to) "
@@ -511,15 +498,11 @@ def submit():
         db.commit()
 
         body = '<p class="success">Your post has been submitted for moderation.</p><p><a href="/">Back to home</a></p>'
-        resp = make_response(_page("Post Submitted", body, display_name))
-        resp.set_cookie("display_name", display_name, max_age=60 * 60 * 24 * 365)
-        return resp
+        return _page("Post Submitted", body, display_name)
 
     # GET
     body = _submit_form(question, reply_to_param)
-    resp = make_response(_page("Submit Post", body, display_name))
-    resp.set_cookie("display_name", display_name, max_age=60 * 60 * 24 * 365)
-    return resp
+    return _page("Submit Post", body, display_name)
 
 
 def _submit_form(question, reply_to=None, error="") -> str:
