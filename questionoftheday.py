@@ -122,7 +122,7 @@ label { display: block; margin-top: 8px; }
 
 
 def _page(title: str, body: str, display_name: str = "") -> str:
-    name_line = f"<p>You are: <strong>{display_name}</strong></p>" if display_name else ""
+    name_line = f"<p>You are: <strong>{_esc(display_name)}</strong></p>" if display_name else ""
     return f"""<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -308,13 +308,16 @@ def _user_hash(ip: str) -> str:
     return hashlib.sha256(data).hexdigest()[:16]
 
 
+_DISPLAY_NAME_RE = re.compile(r"^[a-z]+_[a-z]+_\d{2,3}$")
+
+
 def get_identity():
     """Return (display_name, user_hash) for the current visitor."""
     ip = request.remote_addr or "unknown"
     user_hash = _user_hash(ip)
-    # Check cookie
-    display_name = request.cookies.get("display_name")
-    if not display_name:
+    # Check cookie — validate against expected pattern to prevent injection
+    display_name = request.cookies.get("display_name", "")
+    if not display_name or not _DISPLAY_NAME_RE.match(display_name):
         display_name = _generate_display_name()
     return display_name, user_hash
 
