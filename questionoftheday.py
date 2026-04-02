@@ -167,9 +167,8 @@ def _admin_page(title: str, body: str) -> str:
 </html>"""
 
 
-def _esc(text: str) -> str:
-    """HTML-escape a string using the standard library."""
-    return html.escape(text, quote=True)
+# _esc is an alias for the standard html.escape sanitizer.
+_esc = html.escape
 
 
 def _linkify_replies(content: str) -> str:
