@@ -17,7 +17,9 @@ from flask import (
     redirect,
     url_for,
     abort,
+    render_template_string,
 )
+from markupsafe import Markup
 
 app = Flask(__name__)
 
@@ -121,16 +123,15 @@ label { display: block; margin-top: 8px; }
 # ---------------------------------------------------------------------------
 
 
-def _page(title: str, body: str, display_name: str = "") -> str:
-    # display_name is already HTML-escaped by get_identity()
-    name_line = f"<p>You are: <strong>{display_name}</strong></p>" if display_name else ""
-    return f"""<!DOCTYPE html>
+# Jinja2 template for public pages — display_name is auto-escaped
+_PUBLIC_TMPL = """\
+<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>{title} — QOTD</title>
-<style>{CSS}</style>
+<title>{{ title }} — QOTD</title>
+<style>{{ css }}</style>
 </head>
 <body>
 <nav>
@@ -138,21 +139,21 @@ def _page(title: str, body: str, display_name: str = "") -> str:
 <a href="/archive">Archive</a>
 <a href="/submit">Post Reply</a>
 </nav>
-{name_line}
-<h2>{title}</h2>
-{body}
+{% if display_name %}<p>You are: <strong>{{ display_name }}</strong></p>{% endif %}
+<h2>{{ title }}</h2>
+{{ body }}
 </body>
 </html>"""
 
-
-def _admin_page(title: str, body: str) -> str:
-    return f"""<!DOCTYPE html>
+# Jinja2 template for admin pages
+_ADMIN_TMPL = """\
+<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>{title} — QOTD Admin</title>
-<style>{CSS}</style>
+<title>{{ title }} — QOTD Admin</title>
+<style>{{ css }}</style>
 </head>
 <body>
 <nav>
@@ -161,10 +162,32 @@ def _admin_page(title: str, body: str) -> str:
 <a href="/admin/new_question">New Question</a>
 <a href="/admin/logout">Logout</a>
 </nav>
-<h2>{title}</h2>
-{body}
+<h2>{{ title }}</h2>
+{{ body }}
 </body>
 </html>"""
+
+
+def _page(title: str, body: str, display_name: str = "") -> str:
+    """Render a public page.  `body` is trusted pre-escaped HTML (Markup).
+    `display_name` and `title` are auto-escaped by Jinja2."""
+    return render_template_string(
+        _PUBLIC_TMPL,
+        title=title,
+        display_name=display_name,
+        body=Markup(body),
+        css=Markup(CSS),
+    )
+
+
+def _admin_page(title: str, body: str) -> str:
+    """Render an admin page. `body` is trusted pre-escaped HTML (Markup)."""
+    return render_template_string(
+        _ADMIN_TMPL,
+        title=title,
+        body=Markup(body),
+        css=Markup(CSS),
+    )
 
 
 # _esc is an alias for the standard html.escape sanitizer.
@@ -317,8 +340,8 @@ def get_identity():
     if not display_name:
         display_name = _generate_display_name()
         session["display_name"] = display_name
-    # HTML-escape at the source so every downstream use is safe
-    return html.escape(display_name, quote=True), user_hash
+    # Return raw string — Jinja2 auto-escaping in _page() handles HTML safety
+    return display_name, user_hash
 
 
 # ---------------------------------------------------------------------------
