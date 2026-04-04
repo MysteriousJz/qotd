@@ -44,6 +44,7 @@ MAX_POST_LENGTH = 4000
 RATE_LIMIT_SECONDS = 30
 DEFAULT_OP_TEXT = "What is your question for the board today?"
 LOG_LIMIT = 200
+ALLOWED_TABLE_NAMES = {"questions", "posts", "queue", "bans", "post_logs"}
 
 CSS = """
 body {
@@ -285,6 +286,24 @@ def _esc(text: str) -> str:
     return html.escape(text, quote=True)
 
 
+def _csrf_token() -> str:
+    token = session.get("csrf_token")
+    if not token:
+        token = secrets.token_hex(16)
+        session["csrf_token"] = token
+    return token
+
+
+def _csrf_input() -> str:
+    return f'<input type="hidden" name="csrf_token" value="{_csrf_token()}">'
+
+
+def _require_csrf() -> None:
+    sent_token = request.form.get("csrf_token", "")
+    if not sent_token or not secrets.compare_digest(sent_token, _csrf_token()):
+        abort(403)
+
+
 def _format_timestamp(value: str) -> str:
     try:
         return datetime.fromisoformat(value).strftime("%Y-%m-%d %H:%M")
@@ -330,13 +349,13 @@ def _client_ip() -> str:
 
 
 def _user_hash(ip_address: str) -> str:
-    return hashlib.sha256(f"{ip_address}:{app.secret_key}".encode()).hexdigest()[:16]
+    return hashlib.sha256(f"{ip_address}:{app.secret_key}".encode()).hexdigest()[:32]
 
 
 def _anonymous_id() -> str:
     anon_id = session.get("anonymous_id")
     if not anon_id:
-        anon_id = f"No.{secrets.randbelow(900000) + 100000}"
+        anon_id = f"No.{secrets.randbelow(90000000) + 10000000}"
         session["anonymous_id"] = anon_id
     return anon_id
 
@@ -371,7 +390,7 @@ def _table_exists(db: sqlite3.Connection, name: str) -> bool:
 
 
 def _columns(db: sqlite3.Connection, table_name: str) -> set[str]:
-    if not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", table_name):
+    if table_name not in ALLOWED_TABLE_NAMES:
         raise ValueError("Invalid table name")
     rows = db.execute(f"PRAGMA table_info({table_name})").fetchall()
     return {row["name"] for row in rows}
@@ -805,6 +824,7 @@ def admin_dashboard():
             f'<span class="post-meta">{_format_timestamp(post["created_at"])} No.{post["id"]}</span></div>'
             f'<div class="post-body"><p>{_text_to_html(post["content"])}</p>'
             f'<form class="inline-form" method="post" action="/admin/delete_post/{post["id"]}">'
+            f'{_csrf_input()}'
             '<button type="submit">Delete post</button></form></div></div>'
         )
         for post in recent_posts
@@ -813,6 +833,7 @@ def admin_dashboard():
         f'{notice}'
         '<div class="panel"><div class="panel-head"><strong>Change OP</strong></div><div class="panel-body">'
         '<form method="post" action="/admin/op">'
+        f'{_csrf_input()}'
         '<label for="question_text">Current prompt</label>'
         f'<textarea id="question_text" name="question_text">{_esc(question["question_text"])}</textarea>'
         '<input type="submit" value="Update OP">'
@@ -821,11 +842,14 @@ def admin_dashboard():
         '<p><a href="/admin/queue">Open moderation queue</a></p>'
         '<p><a href="/admin/logs">Open post log</a></p>'
         '<form method="post" action="/admin/delete_post_by_id">'
+        f'{_csrf_input()}'
         '<label for="post_id">Delete approved post by ID</label>'
         '<input type="text" id="post_id" name="post_id" inputmode="numeric">'
         '<input type="submit" value="Delete Post">'
         '</form>'
         '<form method="post" action="/admin/ban">'
+        f'{_csrf_input()}'
+        '<input type="hidden" name="next_target" value="dashboard">'
         '<label for="ip_address">Ban IP address</label>'
         '<input type="text" id="ip_address" name="ip_address" placeholder="127.0.0.1">'
         '<input type="submit" value="Ban IP">'
@@ -843,6 +867,7 @@ def admin_dashboard():
 @app.route("/admin/op", methods=["POST"])
 @admin_required
 def admin_update_op():
+    _require_csrf()
     init_db()
     db = get_db()
     question_text = request.form.get("question_text", "").strip()
@@ -879,10 +904,14 @@ def admin_queue():
             f'<div class="post-body">{reply_line}<p>{_text_to_html(item["content"])}</p>'
             '<div class="admin-actions">'
             f'<form class="inline-form" method="post" action="/admin/approve/{item["id"]}">'
+            f'{_csrf_input()}'
             '<button type="submit">Approve</button></form> '
             f'<form class="inline-form" method="post" action="/admin/delete_queue/{item["id"]}">'
+            f'{_csrf_input()}'
             '<button type="submit">Delete</button></form> '
             f'<form class="inline-form" method="post" action="/admin/ban">'
+            f'{_csrf_input()}'
+            '<input type="hidden" name="next_target" value="queue">'
             f'<input type="hidden" name="ip_address" value="{_esc(item["ip_address"] or "")}">'
             '<button type="submit">Ban IP</button></form>'
             '</div></div></div>'
@@ -894,6 +923,7 @@ def admin_queue():
 @app.route("/admin/approve/<int:item_id>", methods=["POST"])
 @admin_required
 def admin_approve(item_id: int):
+    _require_csrf()
     init_db()
     db = get_db()
     item = db.execute("SELECT * FROM queue WHERE id = ?", (item_id,)).fetchone()
@@ -915,6 +945,7 @@ def admin_approve(item_id: int):
 @app.route("/admin/delete_queue/<int:item_id>", methods=["POST"])
 @admin_required
 def admin_delete_queue(item_id: int):
+    _require_csrf()
     init_db()
     db = get_db()
     item = db.execute("SELECT * FROM queue WHERE id = ?", (item_id,)).fetchone()
@@ -928,6 +959,7 @@ def admin_delete_queue(item_id: int):
 @app.route("/admin/delete_post_by_id", methods=["POST"])
 @admin_required
 def admin_delete_post_by_id():
+    _require_csrf()
     post_id = request.form.get("post_id", "").strip()
     if not post_id.isdigit():
         return redirect(url_for("admin_dashboard", message="Enter a numeric post ID."))
@@ -937,6 +969,7 @@ def admin_delete_post_by_id():
 @app.route("/admin/delete_post/<int:post_id>", methods=["POST"])
 @admin_required
 def admin_delete_post(post_id: int):
+    _require_csrf()
     return _delete_approved_post(post_id)
 
 
@@ -955,6 +988,7 @@ def _delete_approved_post(post_id: int):
 @app.route("/admin/ban", methods=["POST"])
 @admin_required
 def admin_ban():
+    _require_csrf()
     init_db()
     db = get_db()
     ip_address = request.form.get("ip_address", "").strip()
@@ -963,8 +997,12 @@ def admin_ban():
     db.execute("INSERT OR IGNORE INTO bans (ip_address) VALUES (?)", (ip_address,))
     _log_event(db, ip_address, "admin", "ip-banned")
     db.commit()
-    back_to_queue = request.referrer and request.referrer.endswith("/admin/queue")
-    target = url_for("admin_queue") if back_to_queue else url_for("admin_dashboard", message=f"Banned {ip_address}.")
+    next_target = request.form.get("next_target")
+    target = (
+        url_for("admin_queue")
+        if next_target == "queue"
+        else url_for("admin_dashboard", message=f"Banned {ip_address}.")
+    )
     return redirect(target)
 
 
