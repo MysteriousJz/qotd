@@ -367,6 +367,8 @@ def _table_exists(db: sqlite3.Connection, name: str) -> bool:
 
 
 def _columns(db: sqlite3.Connection, table_name: str) -> set[str]:
+    if not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", table_name):
+        raise ValueError("Invalid table name")
     rows = db.execute(f"PRAGMA table_info({table_name})").fetchall()
     return {row["name"] for row in rows}
 
@@ -530,7 +532,7 @@ def _render_post(post: sqlite3.Row) -> str:
         )
     return (
         f'<div class="post" id="post-{post["id"]}">'
-        f'<div class="post-head"><strong>Anonymous { _esc(post["display_name"]) }</strong> '
+        f'<div class="post-head"><strong>Anonymous {_esc(post["display_name"])}</strong> '
         f'<span class="post-meta">{_format_timestamp(post["created_at"])} No.{post["id"]}</span></div>'
         f'<div class="post-body">{reply_line}<p>{_text_to_html(post["content"])}</p>'
         f'<div class="small"><a class="reply-link" href="/submit?reply_to={post["id"]}">Reply</a></div>'
@@ -601,7 +603,9 @@ def _rate_limit_remaining(db: sqlite3.Connection, ip_address: str) -> int:
     ).fetchone()
     if row is None:
         return 0
-    elapsed = datetime.utcnow() - _parse_timestamp(row["created_at"])
+    elapsed = datetime.now(timezone.utc).replace(tzinfo=None) - _parse_timestamp(
+        row["created_at"]
+    )
     remaining = RATE_LIMIT_SECONDS - int(elapsed.total_seconds())
     return remaining if remaining > 0 else 0
 
@@ -634,8 +638,23 @@ def _log_event(
 def _extract_reply_to(content: str, explicit_reply_to: int | None) -> int | None:
     if explicit_reply_to:
         return explicit_reply_to
-    match = re.search(r"(?:^|\n)\s*(?:>>|>)(\d+)\b", content)
-    return int(match.group(1)) if match else None
+    for raw_line in content.splitlines():
+        line = raw_line.lstrip()
+        if line.startswith(">>"):
+            candidate = line[2:]
+        elif line.startswith(">"):
+            candidate = line[1:]
+        else:
+            continue
+        digits = []
+        for char in candidate:
+            if char.isdigit():
+                digits.append(char)
+            else:
+                break
+        if digits:
+            return int("".join(digits))
+    return None
 
 
 @app.route("/")
