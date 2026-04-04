@@ -508,7 +508,13 @@ def init_db() -> None:
     _migrate_legacy_schema(db)
     _create_schema(db)
     if "ip_address" not in _columns(db, "queue"):
-        db.execute("ALTER TABLE queue ADD COLUMN ip_address TEXT NOT NULL DEFAULT 'unknown'")
+        try:
+            db.execute(
+                "ALTER TABLE queue ADD COLUMN ip_address TEXT NOT NULL DEFAULT 'unknown'"
+            )
+        except sqlite3.OperationalError:
+            if "ip_address" not in _columns(db, "queue"):
+                raise
     active = db.execute(
         "SELECT id FROM questions WHERE is_active = 1 ORDER BY id DESC LIMIT 1"
     ).fetchone()
@@ -609,7 +615,7 @@ def _submit_form(
         f'{reply_field}'
         '<label for="content">Text</label>'
         f'<textarea id="content" name="content" maxlength="{MAX_POST_LENGTH}" '
-        'placeholder=">123 to reference another reply">'
+        'placeholder=">123 or >>123 to reference another reply">'
         f'{_esc(reply_prefix)}</textarea>'
         f'<input type="submit" value="Submit to moderation">'
         '</form></div></div>'
