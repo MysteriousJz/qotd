@@ -302,13 +302,17 @@ def _parse_timestamp(value: str) -> datetime:
     return dt
 
 
+def _utc_now_naive() -> datetime:
+    return datetime.now(timezone.utc).replace(tzinfo=None)
+
+
 def _text_to_html(content: str) -> str:
     escaped = _esc(content)
-    escaped = re_quote_links(escaped)
+    escaped = _linkify_post_references(escaped)
     return escaped.replace("\n", "<br>")
 
 
-def re_quote_links(text: str) -> str:
+def _linkify_post_references(text: str) -> str:
     return re.sub(
         r"(?:&gt;&gt;|&gt;)(\d+)",
         lambda match: (
@@ -332,7 +336,7 @@ def _user_hash(ip_address: str) -> str:
 def _anonymous_id() -> str:
     anon_id = session.get("anonymous_id")
     if not anon_id:
-        anon_id = f"No.{random.randint(100000, 999999)}"
+        anon_id = f"No.{secrets.randbelow(900000) + 100000}"
         session["anonymous_id"] = anon_id
     return anon_id
 
@@ -435,8 +439,9 @@ def _migrate_legacy_schema(db: sqlite3.Connection) -> None:
         return
 
     db.execute("PRAGMA foreign_keys=OFF")
-    for table_name in ("posts_legacy", "queue_legacy", "questions_legacy"):
-        db.execute(f"DROP TABLE IF EXISTS {table_name}")
+    db.execute("DROP TABLE IF EXISTS posts_legacy")
+    db.execute("DROP TABLE IF EXISTS queue_legacy")
+    db.execute("DROP TABLE IF EXISTS questions_legacy")
     db.execute("ALTER TABLE questions RENAME TO questions_legacy")
     db.execute("ALTER TABLE posts RENAME TO posts_legacy")
     db.execute("ALTER TABLE queue RENAME TO queue_legacy")
@@ -470,7 +475,7 @@ def _migrate_legacy_schema(db: sqlite3.Connection) -> None:
             INSERT INTO queue (
                 question_id, user_hash, display_name, content, reply_to, ip_address, submitted_at
             )
-            SELECT ?, user_hash, display_name, content, reply_to, '', submitted_at
+            SELECT ?, user_hash, display_name, content, reply_to, 'unknown', submitted_at
             FROM queue_legacy
             WHERE question_id = ?
             ORDER BY id ASC
@@ -484,7 +489,7 @@ def init_db() -> None:
     _migrate_legacy_schema(db)
     _create_schema(db)
     if "ip_address" not in _columns(db, "queue"):
-        db.execute("ALTER TABLE queue ADD COLUMN ip_address TEXT NOT NULL DEFAULT ''")
+        db.execute("ALTER TABLE queue ADD COLUMN ip_address TEXT NOT NULL DEFAULT 'unknown'")
     active = db.execute(
         "SELECT id FROM questions WHERE is_active = 1 ORDER BY id DESC LIMIT 1"
     ).fetchone()
@@ -603,9 +608,7 @@ def _rate_limit_remaining(db: sqlite3.Connection, ip_address: str) -> int:
     ).fetchone()
     if row is None:
         return 0
-    elapsed = datetime.now(timezone.utc).replace(tzinfo=None) - _parse_timestamp(
-        row["created_at"]
-    )
+    elapsed = _utc_now_naive() - _parse_timestamp(row["created_at"])
     remaining = RATE_LIMIT_SECONDS - int(elapsed.total_seconds())
     return remaining if remaining > 0 else 0
 
@@ -694,10 +697,11 @@ def submit():
         question_id = request.form.get("question_id", type=int)
         reply_to = _extract_reply_to(content, request.form.get("reply_to", type=int))
         errors = []
+        banned = _is_banned(db, ip_address)
 
         if question_id != question["id"]:
             errors.append("The board changed while you were typing. Reload and try again.")
-        if _is_banned(db, ip_address):
+        if banned:
             errors.append("Your IP address is banned from posting.")
         remaining = _rate_limit_remaining(db, ip_address)
         if remaining:
@@ -715,7 +719,7 @@ def submit():
                 errors.append("That reply target does not exist yet.")
 
         if errors:
-            if _is_banned(db, ip_address):
+            if banned:
                 _log_event(db, ip_address, anonymous_id, "banned-rejected", content)
                 db.commit()
             error_html = "".join(_post_notice(message, "error") for message in errors)
