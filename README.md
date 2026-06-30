@@ -90,7 +90,7 @@ server {
 - [ ] Admin can approve replies
 - [ ] Admin can reject replies
 - [ ] `>>123` reply references work
-- [ ] Calendar links only dates with questions
+- [ ] Calendar dates are clickable to open that day
 - [ ] Previous/next month navigation works
 - [ ] 30-second rate limiting blocks repeat posts
 - [ ] Banned IPs are blocked

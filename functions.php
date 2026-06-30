@@ -371,11 +371,11 @@ function qotd_calendar_html(DateTimeImmutable $month, array $questionDates, stri
         if ($date === $activeDate) {
             $classes[] = 'active';
         }
-        if (isset($questionMap[$date])) {
-            $html .= '<td class="' . implode(' ', $classes) . '"><a href="' . qotd_h(qotd_date_url($date)) . '">' . $day . '</a></td>';
-        } else {
-            $html .= '<td class="' . implode(' ', $classes) . '"><span>' . $day . '</span></td>';
+        $isQuestionDay = isset($questionMap[$date]);
+        if ($isQuestionDay) {
+            $classes[] = 'question-day';
         }
+        $html .= '<td class="' . implode(' ', $classes) . '"><a href="' . qotd_h(qotd_date_url($date)) . '">' . $day . '</a></td>';
         $cell++;
         if ($cell % 7 === 0 && $day < $daysInMonth) {
             $html .= '</tr><tr>';

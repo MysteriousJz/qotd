@@ -342,8 +342,15 @@ input[type="submit"]:hover {
 
 .calendar td.day a {
   display: block;
+  height: 100%;
   color: inherit;
   text-decoration: underline;
+}
+
+.calendar td.day a:hover,
+.calendar td.day a:focus {
+  background: rgba(255, 255, 255, 0.35);
+  outline: none;
 }
 
 .list {
