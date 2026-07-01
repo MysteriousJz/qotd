@@ -47,10 +47,19 @@ function qotd_admin_dashboard_page(string $message = ''): void
     $questionDate = qotd_normalize_date($questionDate) ?? qotd_now()->format('Y-m-d');
     $question = qotd_question_for_date($questionDate);
     $approved = qotd_all_approved_replies();
-    $queueCount = count(qotd_queue_items());
+    $pendingQueue = qotd_queue_items();
     $banList = qotd_query_all(qotd_db(), 'SELECT * FROM bans ORDER BY created_at DESC, id DESC');
     $calendarDates = qotd_question_dates_for_month(qotd_date_obj($questionDate));
+    $totalQuestions = qotd_question_count();
+    $approvedCount = qotd_approved_reply_count();
+    $pendingCount = qotd_pending_queue_count();
     $notice = $message !== '' ? qotd_notice($message, 'status') : '';
+
+    $statsHtml = '<section class="panel"><div class="panel-head">Raw Stats</div><div class="panel-body stats-grid">';
+    $statsHtml .= '<div class="stat-card"><div class="stat-value">' . $totalQuestions . '</div><div class="stat-label">Total questions</div></div>';
+    $statsHtml .= '<div class="stat-card"><div class="stat-value">' . $approvedCount . '</div><div class="stat-label">Total approved replies</div></div>';
+    $statsHtml .= '<div class="stat-card"><div class="stat-value">' . $pendingCount . '</div><div class="stat-label">Total pending queue items</div></div>';
+    $statsHtml .= '</div><div class="help-text"><a href="/admin/import">Bulk import questions</a></div></section>';
 
     $questionForm = '<section class="panel"><div class="panel-head">Question Manager</div><div class="panel-body">';
     if ($notice !== '') {
@@ -71,13 +80,12 @@ function qotd_admin_dashboard_page(string $message = ''): void
     }
     $questionForm .= '</div></section>';
 
-    $queueItems = qotd_queue_items();
     $queueHtml = '<section class="panel"><div class="panel-head">Moderation Queue</div><div class="panel-body">';
-    $queueHtml .= '<div class="help-text">' . count($queueItems) . ' item(s) pending / ' . $queueCount . ' total in queue table</div>';
-    if ($queueItems === []) {
+    $queueHtml .= '<div class="help-text">' . count($pendingQueue) . ' item(s) pending</div>';
+    if ($pendingQueue === []) {
         $queueHtml .= '<div class="empty-column">Queue is empty.</div>';
     } else {
-        foreach ($queueItems as $item) {
+        foreach ($pendingQueue as $item) {
             $replyTo = !empty($item['reply_to']) ? (int)$item['reply_to'] : null;
             $replyLine = $replyTo ? '<div class="reply-to">In reply to <a href="/#post-' . $replyTo . '">#' . $replyTo . '</a></div>' : '';
             $queueHtml .= '<article class="post discussion">';
@@ -146,6 +154,7 @@ function qotd_admin_dashboard_page(string $message = ''): void
     $calendar = qotd_calendar_html(qotd_date_obj($questionDate), $calendarDates, $questionDate);
 
     $body = '<main class="page admin-page">'
+        . $statsHtml
         . $questionForm
         . $calendar
         . $queueHtml
@@ -216,6 +225,145 @@ function qotd_admin_logs_page(): void
 
     echo qotd_admin_shell('Activity Log', $body);
     exit;
+}
+
+/** Parse bulk-import question text. */
+function qotd_admin_parse_import_lines(string $text): array
+{
+    $entries = [];
+    $errors = [];
+    $lines = preg_split('/\R/', $text) ?: [];
+
+    foreach ($lines as $index => $line) {
+        $lineNumber = $index + 1;
+        $trimmed = trim($line);
+        if ($trimmed === '') {
+            continue;
+        }
+
+        if (!preg_match('/^(\d{4}-\d{2}-\d{2})\s*:\s*(.+)$/', $trimmed, $match)) {
+            $errors[] = ['line' => $lineNumber, 'status' => 'error', 'message' => 'Use YYYY-MM-DD: Question text.'];
+            continue;
+        }
+
+        $date = qotd_normalize_date($match[1]);
+        $questionText = trim($match[2]);
+        if ($date === null || $questionText === '') {
+            $errors[] = ['line' => $lineNumber, 'status' => 'error', 'message' => 'Invalid date or empty question text.'];
+            continue;
+        }
+        if (mb_strlen($questionText) > QUESTION_MAX_LENGTH) {
+            $errors[] = ['line' => $lineNumber, 'status' => 'error', 'message' => 'Question text is too long.'];
+            continue;
+        }
+
+        $entries[] = [
+            'line' => $lineNumber,
+            'date' => $date,
+            'question_text' => $questionText,
+            'existing' => qotd_question_for_date($date) !== null,
+        ];
+    }
+
+    return ['entries' => $entries, 'errors' => $errors];
+}
+
+/** Process bulk question imports. */
+function qotd_admin_process_import(string $text, string $conflictMode): array
+{
+    qotd_admin_require_auth();
+    qotd_require_csrf();
+    qotd_init_db();
+
+    $parsed = qotd_admin_parse_import_lines($text);
+    $entries = $parsed['entries'];
+    $errors = $parsed['errors'];
+    $results = [];
+
+    if ($conflictMode === 'cancel' && array_filter($entries, static fn (array $entry): bool => !empty($entry['existing']))) {
+        foreach ($entries as $entry) {
+            $results[] = [
+                'line' => $entry['line'],
+                'status' => 'error',
+                'message' => !empty($entry['existing']) ? 'Cancelled because a question already exists for this date.' : 'Cancelled.',
+            ];
+        }
+        return ['results' => array_merge($results, $errors), 'cancelled' => true];
+    }
+
+    foreach ($entries as $entry) {
+        if (!empty($entry['existing']) && $conflictMode === 'skip') {
+            $results[] = [
+                'line' => $entry['line'],
+                'status' => 'status',
+                'message' => 'Skipped existing question.',
+            ];
+            continue;
+        }
+
+        $saved = qotd_set_question((string)$entry['date'], (string)$entry['question_text']);
+        $results[] = [
+            'line' => $entry['line'],
+            'status' => !empty($entry['existing']) ? 'status' : 'success',
+            'message' => !empty($entry['existing']) ? 'Overwrote question for ' . $saved['date'] . '.' : 'Imported question for ' . $saved['date'] . '.',
+        ];
+    }
+
+    return ['results' => array_merge($results, $errors), 'cancelled' => false];
+}
+
+/** Bulk import page. */
+function qotd_admin_import_page(string $message = '', array $results = [], string $draftText = '', string $conflictMode = 'overwrite'): void
+{
+    qotd_admin_require_auth();
+    qotd_init_db();
+
+    $body = '<main class="page"><section class="panel"><div class="panel-head">Bulk Import</div><div class="panel-body">';
+    if ($message !== '') {
+        $body .= qotd_notice($message, 'status');
+    }
+    $body .= '<div class="help-text">Format: YYYY-MM-DD: Question text</div>';
+    if ($results !== []) {
+        $body .= '<div class="import-results">';
+        foreach ($results as $result) {
+            $body .= '<div class="log-row import-' . qotd_h((string)($result['status'] ?? 'status')) . '">';
+            if (isset($result['line'])) {
+                $body .= '<span class="log-action">Line ' . (int)$result['line'] . '</span> ';
+            }
+            $body .= qotd_h((string)($result['message'] ?? ''));
+            $body .= '</div>';
+        }
+        $body .= '</div>';
+    }
+    $body .= '<form method="post" action="/admin/import">';
+    $body .= qotd_csrf_field();
+    $body .= '<label for="conflict_mode">If a date already has a question</label>';
+    $body .= '<select id="conflict_mode" name="conflict_mode">';
+    foreach (['overwrite' => 'Overwrite', 'skip' => 'Skip', 'cancel' => 'Cancel'] as $value => $label) {
+        $body .= '<option value="' . qotd_h($value) . '"' . ($conflictMode === $value ? ' selected' : '') . '>' . qotd_h($label) . '</option>';
+    }
+    $body .= '</select>';
+    $body .= '<label for="import_text">Questions</label>';
+    $body .= '<textarea id="import_text" name="import_text" rows="14" placeholder="2026-07-01: What is your question?">' . qotd_h($draftText) . '</textarea>';
+    $body .= '<div class="form-actions"><button type="submit">Import questions</button></div>';
+    $body .= '</form></div></section></main>';
+
+    echo qotd_admin_shell('Bulk Import', $body);
+    exit;
+}
+
+/** Handle a bulk import submission. */
+function qotd_admin_import_submit(): void
+{
+    $text = (string)($_POST['import_text'] ?? '');
+    $conflictMode = (string)($_POST['conflict_mode'] ?? 'overwrite');
+    if (!in_array($conflictMode, ['overwrite', 'skip', 'cancel'], true)) {
+        $conflictMode = 'overwrite';
+    }
+
+    $result = qotd_admin_process_import($text, $conflictMode);
+    $message = $result['cancelled'] ? 'Import cancelled.' : 'Import complete.';
+    qotd_admin_import_page($message, $result['results'], $text, $conflictMode);
 }
 
 /** Process login. */
@@ -375,6 +523,13 @@ function qotd_handle_admin_request(string $path): void
 
     if ($path === '/admin/logs') {
         qotd_admin_logs_page();
+    }
+
+    if ($path === '/admin/import') {
+        if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+            qotd_admin_import_submit();
+        }
+        qotd_admin_import_page((string)($_GET['message'] ?? ''));
     }
 
     if ($path === '/admin/question' && $_SERVER['REQUEST_METHOD'] === 'POST') {

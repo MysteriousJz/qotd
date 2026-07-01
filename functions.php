@@ -27,10 +27,10 @@ function qotd_h(?string $value): string
     return htmlspecialchars($value ?? '', ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
 }
 
-/** Get the current UTC time. */
+/** Get the current local time. */
 function qotd_now(): DateTimeImmutable
 {
-    return new DateTimeImmutable('now', new DateTimeZone('UTC'));
+    return new DateTimeImmutable('now', new DateTimeZone(APP_TIMEZONE));
 }
 
 /** Validate a YYYY-MM-DD date string. */
@@ -40,7 +40,7 @@ function qotd_normalize_date(?string $date): ?string
         return null;
     }
 
-    $dt = DateTimeImmutable::createFromFormat('!Y-m-d', $date, new DateTimeZone('UTC'));
+    $dt = DateTimeImmutable::createFromFormat('!Y-m-d', $date, new DateTimeZone(APP_TIMEZONE));
     if ($dt === false) {
         return null;
     }
@@ -51,7 +51,7 @@ function qotd_normalize_date(?string $date): ?string
 /** Parse a date into an immutable object. */
 function qotd_date_obj(string $date): DateTimeImmutable
 {
-    return new DateTimeImmutable($date, new DateTimeZone('UTC'));
+    return new DateTimeImmutable($date, new DateTimeZone(APP_TIMEZONE));
 }
 
 /** Build an absolute date page URL. */
@@ -133,7 +133,7 @@ function qotd_content_to_html(string $content): string
     return nl2br((string)$escaped, false);
 }
 
-/** Render a UTC timestamp for display. */
+/** Render a local timestamp for display. */
 function qotd_format_timestamp(?string $value): string
 {
     if ($value === null || $value === '') {
@@ -142,10 +142,17 @@ function qotd_format_timestamp(?string $value): string
 
     try {
         $dt = new DateTimeImmutable($value, new DateTimeZone('UTC'));
+        $dt = $dt->setTimezone(new DateTimeZone(APP_TIMEZONE));
         return $dt->format('Y-m-d H:i');
     } catch (Throwable) {
         return $value;
     }
+}
+
+/** Check whether a date is in the future for public viewing. */
+function qotd_is_future_date(string $date): bool
+{
+    return $date > qotd_now()->format('Y-m-d');
 }
 
 /** Track whether the current user is an admin. */
@@ -237,7 +244,7 @@ function qotd_public_shell(string $title, string $body): string
         . '<link rel="stylesheet" href="/css/style.css"></head><body>'
         . '<div class="site"><header class="site-header">'
         . '<div class="site-title">Question of the Day</div>'
-        . '<div class="site-subtitle">anonymous discussion board / no javascript / UTC</div>'
+        . '<div class="site-subtitle">anonymous discussion board / no javascript / America/New_York</div>'
         . '<nav class="site-nav"><a href="/">Home</a><a href="/admin">Admin</a></nav>'
         . '</header>'
         . $body
@@ -254,8 +261,8 @@ function qotd_admin_shell(string $title, string $body): string
         . '<link rel="stylesheet" href="/css/style.css"></head><body>'
         . '<div class="site"><header class="site-header">'
         . '<div class="site-title">QOTD Admin</div>'
-        . '<div class="site-subtitle">moderation console</div>'
-        . '<nav class="site-nav"><a href="/">Home</a><a href="/admin">Dashboard</a><a href="/admin/queue">Queue</a><a href="/admin/logs">Logs</a><a href="/admin/logout">Logout</a></nav>'
+        . '<div class="site-subtitle">moderation console / America/New_York</div>'
+        . '<nav class="site-nav"><a href="/">Home</a><a href="/admin">Dashboard</a><a href="/admin/import">Import</a><a href="/admin/queue">Queue</a><a href="/admin/logs">Logs</a><a href="/admin/logout">Logout</a></nav>'
         . '</header>'
         . $body
         . '</div></body></html>';
@@ -335,7 +342,7 @@ function qotd_is_banned_cached(string $ip): bool
 }
 
 /** Create the markup for the main calendar. */
-function qotd_calendar_html(DateTimeImmutable $month, array $questionDates, string $activeDate): string
+function qotd_calendar_html(DateTimeImmutable $month, array $questionDates, string $activeDate, bool $allowFutureLinks = true): string
 {
     $first = $month->modify('first day of this month');
     $prev = $first->modify('-1 month');
@@ -372,10 +379,16 @@ function qotd_calendar_html(DateTimeImmutable $month, array $questionDates, stri
             $classes[] = 'active';
         }
         $isQuestionDay = isset($questionMap[$date]);
-        if ($isQuestionDay) {
+        $isFuture = qotd_is_future_date($date);
+        if ($isQuestionDay && ($allowFutureLinks || !$isFuture)) {
             $classes[] = 'question-day';
+            $html .= '<td class="' . implode(' ', $classes) . '"><a href="' . qotd_h(qotd_date_url($date)) . '">' . $day . '</a></td>';
+        } else {
+            if ($isFuture) {
+                $classes[] = 'future';
+            }
+            $html .= '<td class="' . implode(' ', $classes) . '"><span>' . $day . '</span></td>';
         }
-        $html .= '<td class="' . implode(' ', $classes) . '"><a href="' . qotd_h(qotd_date_url($date)) . '">' . $day . '</a></td>';
         $cell++;
         if ($cell % 7 === 0 && $day < $daysInMonth) {
             $html .= '</tr><tr>';
@@ -504,10 +517,9 @@ function qotd_quote_preview(array $reply): string
 }
 
 /** Reply form markup. */
-function qotd_reply_form(array $question, int $replyToId = 0, ?array $replyTarget = null, string $message = '', string $draftContent = ''): string
+function qotd_reply_form(array $question, ?array $replyTarget = null, string $message = '', string $draftContent = ''): string
 {
-    $targetId = $replyToId > 0 ? $replyToId : ($replyTarget ? (int)$replyTarget['id'] : 0);
-    $replyKind = $targetId > 0 ? 'post' : 'question';
+    $targetId = $replyTarget ? (int)$replyTarget['id'] : 0;
     $prefill = $draftContent !== '' ? $draftContent : qotd_reply_prefix($targetId > 0 ? $targetId : null);
 
     $html = '<section class="panel reply-panel" id="reply-form"><div class="panel-head">Reply</div><div class="panel-body">';
@@ -520,13 +532,8 @@ function qotd_reply_form(array $question, int $replyToId = 0, ?array $replyTarge
     $html .= '<form method="post" action="' . qotd_h(qotd_date_url((string)$question['date'])) . '">';
     $html .= qotd_csrf_field();
     $html .= '<input type="hidden" name="question_id" value="' . qotd_h((string)$question['id']) . '">';
-    $html .= '<div class="target-grid">';
-    $html .= '<label><input type="radio" name="reply_kind" value="question"' . ($replyKind === 'question' ? ' checked' : '') . '> Reply to question</label>';
-    $html .= '<label><input type="radio" name="reply_kind" value="post"' . ($replyKind === 'post' ? ' checked' : '') . '> Reply to specific post #</label>';
-    $html .= '<input type="number" name="reply_to" min="0" step="1" value="' . ($targetId > 0 ? $targetId : '') . '" placeholder="123">';
-    $html .= '</div>';
     $html .= '<label for="content">Content</label>';
-    $html .= '<textarea id="content" name="content" maxlength="' . MAX_POST_LENGTH . '" placeholder=">123 to reference a post">' . qotd_h($prefill) . '</textarea>';
+    $html .= '<textarea id="content" name="content" maxlength="' . MAX_POST_LENGTH . '" placeholder="Reply to the question. Use >123 to discuss a post.">' . qotd_h($prefill) . '</textarea>';
     $html .= '<div class="form-actions"><button type="submit">Submit for moderation</button></div>';
     $html .= '</form></div></section>';
 
@@ -534,7 +541,7 @@ function qotd_reply_form(array $question, int $replyToId = 0, ?array $replyTarge
 }
 
 /** Render the page column layout for a question date. */
-function qotd_thread_layout(array $question, array $replies, string $date, string $message = '', int $replyToId = 0, ?array $replyTarget = null, string $draftContent = '', string $calendarHtml = ''): string
+function qotd_thread_layout(array $question, array $replies, string $date, string $message = '', ?array $replyTarget = null, string $draftContent = '', string $calendarHtml = ''): string
 {
     [$byId, $children, $roots] = qotd_reply_tree($replies);
 
@@ -562,7 +569,7 @@ function qotd_thread_layout(array $question, array $replies, string $date, strin
     }
 
     $questionCard = qotd_question_card($question);
-    $replyForm = qotd_reply_form($question, $replyToId, $replyTarget, $message, $draftContent);
+    $replyForm = qotd_reply_form($question, $replyTarget, $message, $draftContent);
 
     return '<main class="page">'
         . $questionCard

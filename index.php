@@ -30,8 +30,8 @@ function qotd_public_message_html(string $message): string
 function qotd_date_page_html(string $date, string $message = '', int $replyToId = 0, string $draftContent = '', string $errorMessage = ''): string
 {
     qotd_init_db();
-    $question = qotd_question_for_date($date);
-    $calendar = qotd_calendar_html(qotd_date_obj($date), qotd_question_dates_for_month(qotd_date_obj($date)), $date);
+    $question = qotd_public_question_for_date($date);
+    $calendar = qotd_calendar_html(qotd_date_obj($date), qotd_question_dates_for_month(qotd_date_obj($date)), $date, false);
     $noticeHtml = qotd_public_message_html($message);
     if ($errorMessage !== '') {
         $noticeHtml .= qotd_notice($errorMessage, 'error');
@@ -49,7 +49,7 @@ function qotd_date_page_html(string $date, string $message = '', int $replyToId 
     if ($replyTarget !== null && (int)$replyTarget['question_id'] !== (int)$question['id']) {
         $replyTarget = null;
     }
-    $body = qotd_thread_layout($question, $replies, $date, $noticeHtml, $replyToId, $replyTarget, $draftContent, $calendar);
+    $body = qotd_thread_layout($question, $replies, $date, $noticeHtml, $replyTarget, $draftContent, $calendar);
     return qotd_public_shell(APP_NAME . ' / ' . $date, $body);
 }
 
@@ -64,7 +64,7 @@ function qotd_home_page_html(string $message = '', int $replyToId = 0, string $d
 function qotd_handle_public_submission(string $date): void
 {
     qotd_init_db();
-    $question = qotd_question_for_date($date);
+    $question = qotd_public_question_for_date($date);
     if ($question === null) {
         qotd_emit(qotd_error_page('Not found', 'That question does not exist.'), 404);
     }
@@ -72,13 +72,9 @@ function qotd_handle_public_submission(string $date): void
     $clientIp = qotd_client_ip();
     $content = trim((string)($_POST['content'] ?? ''));
     $questionId = (int)($_POST['question_id'] ?? 0);
-    $replyKind = (string)($_POST['reply_kind'] ?? 'question');
-    $replyToInput = (int)($_POST['reply_to'] ?? 0);
     $replyToId = 0;
 
-    if ($replyKind === 'post' && $replyToInput > 0) {
-        $replyToId = $replyToInput;
-    } elseif (preg_match('/^(?:>>|>)(\d+)/m', $content, $match) === 1) {
+    if (preg_match('/^(?:>>|>)(\d+)/m', $content, $match) === 1) {
         $replyToId = (int)$match[1];
     }
 
@@ -109,12 +105,12 @@ function qotd_handle_public_submission(string $date): void
     }
 
     if ($errors !== []) {
-        $calendar = qotd_calendar_html(qotd_date_obj($date), qotd_question_dates_for_month(qotd_date_obj($date)), $date);
+        $calendar = qotd_calendar_html(qotd_date_obj($date), qotd_question_dates_for_month(qotd_date_obj($date)), $date, false);
         $notice = '';
         foreach ($errors as $error) {
             $notice .= qotd_notice($error, 'error');
         }
-        $body = qotd_thread_layout($question, qotd_replies_for_question((int)$question['id']), $date, $notice, $replyToId, $replyTarget, $content, $calendar);
+        $body = qotd_thread_layout($question, qotd_replies_for_question((int)$question['id']), $date, $notice, $replyTarget, $content, $calendar);
         qotd_emit(qotd_public_shell(APP_NAME . ' / ' . $date, $body));
     }
 
@@ -156,6 +152,11 @@ function qotd_render_date_route(string $date, bool $isHome = false): void
     $replyToId = (int)($_GET['reply_to'] ?? 0);
     $message = (string)($_GET['message'] ?? '');
 
+    qotd_init_db();
+    if (qotd_is_future_date($date)) {
+        qotd_emit(qotd_error_page('Not found', 'That page does not exist.'), 404);
+    }
+
     if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         qotd_handle_public_submission($date);
     }
@@ -168,9 +169,8 @@ function qotd_render_date_route(string $date, bool $isHome = false): void
     $draftContent = '';
     $errorMessage = '';
 
-    qotd_init_db();
-    $question = qotd_question_for_date($date);
-    $calendar = qotd_calendar_html(qotd_date_obj($date), qotd_question_dates_for_month(qotd_date_obj($date)), $date);
+    $question = qotd_public_question_for_date($date);
+    $calendar = qotd_calendar_html(qotd_date_obj($date), qotd_question_dates_for_month(qotd_date_obj($date)), $date, false);
     $noticeHtml = qotd_public_message_html($message);
 
     if ($question === null) {
@@ -184,7 +184,7 @@ function qotd_render_date_route(string $date, bool $isHome = false): void
         $replyTarget = null;
     }
     $replies = qotd_replies_for_question((int)$question['id']);
-    $body = qotd_thread_layout($question, $replies, $date, $noticeHtml, $replyToId, $replyTarget, $draftContent, $calendar);
+    $body = qotd_thread_layout($question, $replies, $date, $noticeHtml, $replyTarget, $draftContent, $calendar);
     $html = qotd_public_shell(APP_NAME . ' / ' . $date, $body);
     qotd_maybe_cache_date_page($date, $html, $cacheable);
     qotd_emit($html);

@@ -1,11 +1,11 @@
 <?php
 declare(strict_types=1);
 
-// Everything runs in UTC so "today" and month navigation stay consistent.
-date_default_timezone_set('UTC');
+// Everything runs in America/New_York so "today" and month navigation stay consistent.
+date_default_timezone_set('America/New_York');
 
 const APP_NAME = 'Question of the Day';
-const APP_TIMEZONE = 'UTC';
+const APP_TIMEZONE = 'America/New_York';
 const APP_BASE_URL = '';
 
 // Keep the SQLite database outside the web root.

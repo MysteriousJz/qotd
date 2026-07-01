@@ -144,10 +144,20 @@ function qotd_question_for_date(string $date): ?array
     return qotd_query_one($db, 'SELECT * FROM questions WHERE date = ? LIMIT 1', [$date]);
 }
 
+/** Return a question for public viewing, hiding future dates. */
+function qotd_public_question_for_date(string $date): ?array
+{
+    if (qotd_is_future_date($date)) {
+        return null;
+    }
+
+    return qotd_question_for_date($date);
+}
+
 /** Return the question for the current UTC day. */
 function qotd_today_question(): ?array
 {
-    return qotd_question_for_date(qotd_now()->format('Y-m-d'));
+    return qotd_public_question_for_date(qotd_now()->format('Y-m-d'));
 }
 
 /** Fetch every question date in a month for the calendar. */
@@ -227,6 +237,27 @@ function qotd_all_approved_replies(): array
          WHERE r.approved = 1
          ORDER BY r.created_at DESC, r.id DESC'
     );
+}
+
+/** Count all questions. */
+function qotd_question_count(): int
+{
+    $row = qotd_query_one(qotd_db(), 'SELECT COUNT(*) AS count FROM questions');
+    return (int)($row['count'] ?? 0);
+}
+
+/** Count approved replies. */
+function qotd_approved_reply_count(): int
+{
+    $row = qotd_query_one(qotd_db(), 'SELECT COUNT(*) AS count FROM replies WHERE approved = 1');
+    return (int)($row['count'] ?? 0);
+}
+
+/** Count pending queue items. */
+function qotd_pending_queue_count(): int
+{
+    $row = qotd_query_one(qotd_db(), 'SELECT COUNT(*) AS count FROM queue');
+    return (int)($row['count'] ?? 0);
 }
 
 /** Fetch the activity log. */
