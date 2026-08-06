@@ -41,7 +41,8 @@ function qotd_normalize_date(?string $date): ?string
     }
 
     $dt = DateTimeImmutable::createFromFormat('!Y-m-d', $date, new DateTimeZone(APP_TIMEZONE));
-    if ($dt === false) {
+    $dateErrors = DateTimeImmutable::getLastErrors();
+    if ($dt === false || ($dateErrors !== false && ($dateErrors['warning_count'] > 0 || $dateErrors['error_count'] > 0))) {
         return null;
     }
 
@@ -67,15 +68,6 @@ function qotd_date_url(string $date, array $query = []): string
 /** Get the client's IP address. */
 function qotd_client_ip(): string
 {
-    $forwarded = $_SERVER['HTTP_X_FORWARDED_FOR'] ?? '';
-    if (is_string($forwarded) && trim($forwarded) !== '') {
-        $parts = explode(',', $forwarded);
-        $candidate = trim($parts[0]);
-        if ($candidate !== '') {
-            return $candidate;
-        }
-    }
-
     $remote = $_SERVER['REMOTE_ADDR'] ?? 'unknown';
     return is_string($remote) && $remote !== '' ? $remote : 'unknown';
 }

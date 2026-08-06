@@ -398,6 +398,10 @@ function qotd_admin_save_question(): void
         header('Location: /admin?message=' . rawurlencode('Please supply both a valid date and question text.'));
         exit;
     }
+    if (mb_strlen($questionText) > QUESTION_MAX_LENGTH) {
+        header('Location: /admin?message=' . rawurlencode('Question text is too long.'));
+        exit;
+    }
 
     qotd_set_question($date, $questionText);
     header('Location: /admin?date=' . rawurlencode($date) . '&message=' . rawurlencode('Question saved.'));
@@ -468,8 +472,8 @@ function qotd_admin_ban_ip(): void
     qotd_init_db();
 
     $ipAddress = trim((string)($_POST['ip_address'] ?? ''));
-    if ($ipAddress === '') {
-        header('Location: /admin?message=' . rawurlencode('Enter an IP address to ban.'));
+    if (filter_var($ipAddress, FILTER_VALIDATE_IP) === false) {
+        header('Location: /admin?message=' . rawurlencode('Enter a valid IP address to ban.'));
         exit;
     }
 
