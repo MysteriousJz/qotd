@@ -20,7 +20,7 @@ Question of the Day — an anonymous PHP/SQLite discussion board.
 ## First run
 
 1. Put the repository in your web root.
-2. Make sure PHP can write to `/tmp/qotd_data` and `/tmp/qotd_cache`.
+2. Make sure PHP can write to `/home/runner/work/qotd-data` and `/tmp/qotd_cache` (or update the paths in `config.php`).
 3. Visit `/` once so the database tables are created.
 4. Open `/admin/login` and sign in.
 5. Add the first question from the admin dashboard.

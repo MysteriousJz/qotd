@@ -236,7 +236,7 @@ function qotd_public_shell(string $title, string $body): string
         . '<link rel="stylesheet" href="/css/style.css"></head><body>'
         . '<div class="site"><header class="site-header">'
         . '<div class="site-title">Question of the Day</div>'
-        . '<div class="site-subtitle">anonymous discussion board / no javascript / America/New_York</div>'
+        . '<div class="site-subtitle">anonymous discussion board / no javascript / ' . qotd_h(APP_TIMEZONE) . '</div>'
         . '<nav class="site-nav"><a href="/">Home</a><a href="/admin">Admin</a></nav>'
         . '</header>'
         . $body
@@ -253,7 +253,7 @@ function qotd_admin_shell(string $title, string $body): string
         . '<link rel="stylesheet" href="/css/style.css"></head><body>'
         . '<div class="site"><header class="site-header">'
         . '<div class="site-title">QOTD Admin</div>'
-        . '<div class="site-subtitle">moderation console / America/New_York</div>'
+        . '<div class="site-subtitle">moderation console / ' . qotd_h(APP_TIMEZONE) . '</div>'
         . '<nav class="site-nav"><a href="/">Home</a><a href="/admin">Dashboard</a><a href="/admin/import">Import</a><a href="/admin/queue">Queue</a><a href="/admin/logs">Logs</a><a href="/admin/logout">Logout</a></nav>'
         . '</header>'
         . $body

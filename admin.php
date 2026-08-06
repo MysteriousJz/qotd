@@ -94,7 +94,7 @@ function qotd_admin_dashboard_page(string $message = ''): void
             $queueHtml .= '<div class="post-actions">';
             $queueHtml .= '<form class="inline-form" method="post" action="/admin/queue/' . (int)$item['id'] . '/approve">' . qotd_csrf_field() . '<button type="submit">Approve</button></form> ';
             $queueHtml .= '<form class="inline-form" method="post" action="/admin/queue/' . (int)$item['id'] . '/reject">' . qotd_csrf_field() . '<button type="submit">Reject</button></form> ';
-            $queueHtml .= '<form class="inline-form" method="post" action="/admin/bans/add">' . qotd_csrf_field() . '<input type="hidden" name="ip_address" value="' . qotd_h((string)$item['ip_address']) . '"><button type="submit">Ban IP</button></form>';
+            $queueHtml .= '<form class="inline-form" method="post" action="/admin/bans/add">' . qotd_csrf_field() . '<input type="hidden" name="ip_address" value="' . qotd_h((string)$item['ip_address']) . '"><input type="hidden" name="return_to" value="/admin/queue"><button type="submit">Ban IP</button></form>';
             $queueHtml .= '</div></div></article>';
         }
     }
@@ -190,7 +190,7 @@ function qotd_admin_queue_page(): void
             $body .= '<div class="post-actions">';
             $body .= '<form class="inline-form" method="post" action="/admin/queue/' . (int)$item['id'] . '/approve">' . qotd_csrf_field() . '<button type="submit">Approve</button></form> ';
             $body .= '<form class="inline-form" method="post" action="/admin/queue/' . (int)$item['id'] . '/reject">' . qotd_csrf_field() . '<button type="submit">Reject</button></form> ';
-            $body .= '<form class="inline-form" method="post" action="/admin/bans/add">' . qotd_csrf_field() . '<input type="hidden" name="ip_address" value="' . qotd_h((string)$item['ip_address']) . '"><button type="submit">Ban IP</button></form>';
+            $body .= '<form class="inline-form" method="post" action="/admin/bans/add">' . qotd_csrf_field() . '<input type="hidden" name="ip_address" value="' . qotd_h((string)$item['ip_address']) . '"><input type="hidden" name="return_to" value="/admin/queue"><button type="submit">Ban IP</button></form>';
             $body .= '</div></div></article>';
         }
     }
@@ -479,7 +479,7 @@ function qotd_admin_ban_ip(): void
 
     qotd_ban_ip($ipAddress);
     $redirect = '/admin?message=' . rawurlencode('Banned ' . $ipAddress . '.');
-    if (isset($_SERVER['HTTP_REFERER']) && str_contains((string)$_SERVER['HTTP_REFERER'], '/admin/queue')) {
+    if ((string)($_POST['return_to'] ?? '') === '/admin/queue') {
         $redirect = '/admin/queue?message=' . rawurlencode('Banned ' . $ipAddress . '.');
     }
     header('Location: ' . $redirect);
