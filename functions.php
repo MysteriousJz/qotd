@@ -69,7 +69,10 @@ function qotd_date_url(string $date, array $query = []): string
 function qotd_client_ip(): string
 {
     $remote = $_SERVER['REMOTE_ADDR'] ?? 'unknown';
-    return is_string($remote) && $remote !== '' ? $remote : 'unknown';
+    if (!is_string($remote) || filter_var($remote, FILTER_VALIDATE_IP) === false) {
+        return 'unknown';
+    }
+    return $remote;
 }
 
 /** Deterministic anonymous ID per IP. */

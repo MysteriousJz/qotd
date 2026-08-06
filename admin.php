@@ -374,6 +374,9 @@ function qotd_admin_login_submit(): void
     qotd_init_db();
 
     $password = (string)($_POST['password'] ?? '');
+    if (ADMIN_PASSWORD_HASH === '') {
+        qotd_admin_login_page('Admin interface is not configured.');
+    }
     if (!password_verify($password, ADMIN_PASSWORD_HASH)) {
         qotd_admin_login_page('Invalid password.');
     }
