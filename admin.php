@@ -175,6 +175,10 @@ function qotd_admin_queue_page(): void
 
     $items = qotd_queue_items();
     $body = '<main class="page"><section class="panel"><div class="panel-head">Moderation Queue</div><div class="panel-body">';
+    $message = (string)($_GET['message'] ?? '');
+    if ($message !== '') {
+        $body .= qotd_notice($message, 'status');
+    }
     if ($items === []) {
         $body .= '<div class="empty-column">Queue is empty.</div>';
     } else {

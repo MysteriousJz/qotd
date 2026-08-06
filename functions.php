@@ -551,7 +551,6 @@ function qotd_thread_layout(array $question, array $replies, string $date, strin
 
     $discussionHtml = '';
     foreach ($roots as $rootId) {
-        $reply = $byId[$rootId];
         if (!empty($children[$rootId])) {
             foreach ($children[$rootId] as $childId) {
                 $discussionHtml .= qotd_render_reply_card($byId[$childId], $date, $byId, $children, 1, true);
