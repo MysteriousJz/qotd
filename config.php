@@ -17,9 +17,8 @@ const CACHE_DIR = '/tmp/qotd_cache';
 // Anonymous ID salt is generated outside the codebase.
 const ANON_SALT_FILE = '/home/runner/work/qotd-data/anon_salt.txt';
 
-// Default admin password: qotdadmin.
-// Change this by replacing the hash with one from password_hash().
-const ADMIN_PASSWORD_HASH = '$2y$10$0bGtPU.PtMrBlXszLfVt/OIsCZgJNSUFa1eqQNXMcnsURjhp1PCMK';
+// Set this to a password_hash() value before enabling the admin interface.
+const ADMIN_PASSWORD_HASH = '';
 
 const RATE_LIMIT_SECONDS = 30;
 const MAX_POST_LENGTH = 4000;

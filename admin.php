@@ -394,8 +394,12 @@ function qotd_admin_save_question(): void
 
     $date = qotd_normalize_date((string)($_POST['date'] ?? ''));
     $questionText = trim((string)($_POST['question_text'] ?? ''));
-    if ($date === null || $questionText === '') {
-        header('Location: /admin?message=' . rawurlencode('Please supply both a valid date and question text.'));
+    if ($date === null) {
+        header('Location: /admin?message=' . rawurlencode('Please supply a valid date.'));
+        exit;
+    }
+    if ($questionText === '') {
+        header('Location: /admin?message=' . rawurlencode('Please supply question text.'));
         exit;
     }
     if (mb_strlen($questionText) > QUESTION_MAX_LENGTH) {
