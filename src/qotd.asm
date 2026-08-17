@@ -136,6 +136,7 @@ cleartext .fallback_quote, 'Assembly is eternal.'
 cleartext .html_prefix, '<!doctype html><html lang="en"><head><meta charset="utf-8"><title>Question of the Day</title></head><body><main><p>'
 cleartext .html_suffix, '</p></main></body></html>'
 cleartext .http_preface, 'HTTP/1.1 200 OK'
+cleartext route, '/'
 public _start
 falign
 _start:
@@ -149,18 +150,9 @@ _start:
 
 falign
 .hookthemall:
-	; An empty suffix is the catch-all route.  Create it with string$new
-	; because cleartext cannot encode a zero-length string object.
-	push rdi r12
-	call string$new
-	mov r12, rax
-	pop rdi
-	mov rsi, r12
+	mov rsi, route
 	mov rdx, asmcall
 	call webservercfg$function_map
-	mov rdi, r12
-	call heap$free
-	pop r12
 	ret
 
 include '../reference_asm/ht_data.inc'
