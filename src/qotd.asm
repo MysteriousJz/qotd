@@ -140,7 +140,7 @@ cleartext .http_preface, 'HTTP/1.1 200 OK'
 ; webservercfg$function_map performs an ends-with match.  Registering `/`
 ; handles the root URL; the standalone rwasa startup below is required
 ; because rwasa has no loadable-module ABI.
-cleartext .route, '/'
+cleartext qotd_route, '/'
 
 public _start
 falign
@@ -155,7 +155,7 @@ _start:
 
 falign
 .hookthemall:
-	mov rsi, .route
+	mov rsi, qotd_route
 	mov rdx, asmcall
 	call webservercfg$function_map
 	ret
