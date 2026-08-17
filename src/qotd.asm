@@ -34,7 +34,7 @@ asmcall:
 	jz .count_done
 	mov rdi, rbx
 	call buffer$nextline
-	test qword [rax], qword -1
+	cmp qword [rax], 0
 	jz .free_count_line
 	inc r12d
 .free_count_line:
@@ -143,14 +143,6 @@ falign
 _start:
 	call ht$init
 	call arguments
-
-	; The legacy public router only serves the homepage here.  Override
-	; rwasa's demonstration suffix so exactly "/" reaches this hook.
-	mov rdi, [funcmatch]
-	call heap$free
-	mov rdi, .route
-	call string$copy
-	mov [funcmatch], rax
 
 	mov rdi, [configs]
 	mov rsi, .hookthemall
