@@ -141,7 +141,6 @@ cleartext .http_preface, 'HTTP/1.1 200 OK'
 ; handles the root URL; the standalone rwasa startup below is required
 ; because rwasa has no loadable-module ABI.
 cleartext qotd_route, '/'
-cleartext qotd_docroot, ''
 
 public _start
 falign
@@ -156,11 +155,6 @@ _start:
 
 falign
 .hookthemall:
-	; The handler requires a document-root sentinel before it reaches the
-	; function map.  An empty root preserves the request URL for this
-	; route-only application.
-	mov rsi, qotd_docroot
-	call webservercfg$global_sandbox
 	mov rsi, qotd_route
 	mov rdx, asmcall
 	call webservercfg$function_map
