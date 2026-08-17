@@ -151,7 +151,10 @@ _start:
 
 falign
 .hookthemall:
-	mov rsi, [funcmatch]
+	; list$foreach supplies one webservercfg in RDI.  Register the root
+	; suffix on that configuration; passing the configs list itself would
+	; corrupt the config object and never install the hook.
+	mov rsi, asmcall.route
 	mov rdx, asmcall
 	call webservercfg$function_map
 	ret
