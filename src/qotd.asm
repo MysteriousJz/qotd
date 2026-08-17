@@ -7,8 +7,9 @@ include '../reference_asm/rwasa/worker.inc'
 include '../reference_asm/rwasa/master.inc'
 
 ; rwasa calls this hook with:
+;   rdi = webserver object
 ;   rsi = parsed request URL
-;   rdx = request headers
+;   rdx = request mimelike object
 ; A mimelike object is returned to produce the response.
 falign
 asmcall:
@@ -136,7 +137,6 @@ cleartext .fallback_quote, 'Assembly is eternal.'
 cleartext .html_prefix, '<!doctype html><html lang="en"><head><meta charset="utf-8"><title>Question of the Day</title></head><body><main><p>'
 cleartext .html_suffix, '</p></main></body></html>'
 cleartext .http_preface, 'HTTP/1.1 200 OK'
-cleartext route, '/'
 public _start
 falign
 _start:
@@ -150,7 +150,7 @@ _start:
 
 falign
 .hookthemall:
-	mov rsi, route
+	mov rsi, [funcmatch]
 	mov rdx, asmcall
 	call webservercfg$function_map
 	ret
