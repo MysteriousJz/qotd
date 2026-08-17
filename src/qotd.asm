@@ -137,6 +137,11 @@ cleartext .fallback_quote, 'Assembly is eternal.'
 cleartext .html_prefix, '<!doctype html><html lang="en"><head><meta charset="utf-8"><title>Question of the Day</title></head><body><main><p>'
 cleartext .html_suffix, '</p></main></body></html>'
 cleartext .http_preface, 'HTTP/1.1 200 OK'
+; webservercfg$function_map performs an ends-with match.  Registering `/`
+; handles the root URL; the standalone rwasa startup below is required
+; because rwasa has no loadable-module ABI.
+cleartext .route, '/'
+
 public _start
 falign
 _start:
@@ -150,7 +155,7 @@ _start:
 
 falign
 .hookthemall:
-	mov rsi, [funcmatch]
+	mov rsi, .route
 	mov rdx, asmcall
 	call webservercfg$function_map
 	ret
