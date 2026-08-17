@@ -136,7 +136,7 @@ cleartext .fallback_quote, 'Assembly is eternal.'
 cleartext .html_prefix, '<!doctype html><html lang="en"><head><meta charset="utf-8"><title>Question of the Day</title></head><body><main><p>'
 cleartext .html_suffix, '</p></main></body></html>'
 cleartext .http_preface, 'HTTP/1.1 200 OK'
-cleartext .route, '/'
+cleartext .route, ''
 
 public _start
 falign
